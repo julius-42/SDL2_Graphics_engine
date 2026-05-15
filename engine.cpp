@@ -71,6 +71,22 @@ Position rotateXZ(Position pos, Position center, float angle){
     };
 }  
 
+Position rotateYZ(Position pos, Position center, float angle){
+    // move to origin
+    float y = pos.Y - center.Y;
+    float z = pos.Z - center.Z;
+
+    float c = cos(angle);
+    float s = sin(angle);
+
+    // rotate, then move back
+    return {
+        pos.X,
+        (y*c - z*s) + center.Y,
+        (y*s + z*c) + center.Z
+    };
+}  
+
 
 void project_cube(SDL_Renderer* rndr, Position pos, Rotation rot,float size, Color clr){
     float r = size/2;
@@ -91,8 +107,14 @@ void project_cube(SDL_Renderer* rndr, Position pos, Rotation rot,float size, Col
         {0,4},{1,5},{2,6},{3,7},  // connecting edges
     };
 
+    // apply XZ rotation to all vertices
     for(auto& v : vs){
         v = rotateXZ(v, pos, rot.Y);
+    }
+
+    // apply XZ rotation to all vertices
+    for(auto& v : vs){
+        v = rotateYZ(v, pos, rot.X);
     }
 
 
@@ -126,6 +148,7 @@ int main(){
         while(SDL_PollEvent(&e)){
             if(e.type == SDL_QUIT)
                 running = false;
+            // Controls for movement and rotation of the object
             if(e.type == SDL_KEYDOWN){
                 switch (e.key.keysym.sym){
                     case SDLK_s: cube_pos.Y += 0.3f; break;
@@ -134,8 +157,8 @@ int main(){
                     case SDLK_a: cube_pos.X -= 0.3f; break;
                     case SDLK_e: cube_pos.Z += 0.3f; break;
                     case SDLK_q: cube_pos.Z -= 0.3f; break;
-                    case SDLK_UP: cube_rot.X += 0.1f; break;
-                    case SDLK_DOWN: cube_rot.X -= 0.1f; break;
+                    case SDLK_DOWN: cube_rot.X += 0.1f; break;
+                    case SDLK_UP: cube_rot.X -= 0.1f; break;
                     case SDLK_RIGHT: cube_rot.Y += 0.1f; break;
                     case SDLK_LEFT: cube_rot.Y -= 0.1f; break;
                 }
@@ -146,6 +169,7 @@ int main(){
         SDL_SetRenderDrawColor(renderer, black.R, black.G, black.B, 255);
         SDL_RenderClear(renderer);
 
+        // center point for reference
         SDL_SetRenderDrawColor(renderer, green.R, green.G, green.B, 255);
         SDL_RenderDrawPoint(renderer, WIDTH/2, HEIGHT/2);
 
