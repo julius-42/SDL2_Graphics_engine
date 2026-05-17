@@ -160,6 +160,8 @@ Obj parse_obj_file(char* file_name){
 
     ifstream file(file_name);
     string line;
+    int pushed_vs = 0;
+    int pushed_es = 0;
     
     while (getline(file, line)){
         stringstream ss(line);
@@ -172,7 +174,7 @@ Obj parse_obj_file(char* file_name){
 
                 if(ss >> vertex.X >> vertex.Y >> vertex.Z){
                     obj.vs.push_back(vertex);
-                    cout << "Pushed vertex: " << vertex.X << " " << vertex.Y << " " << vertex.Z << "\n";
+                    pushed_vs += 1;
                 }
             }
 
@@ -183,11 +185,25 @@ Obj parse_obj_file(char* file_name){
                     edge.first -= 1;
                     edge.second -= 1;
                     obj.es.push_back(edge);
-                    cout << "Pushed edge: " << edge.first << " " << edge.second << "\n";
+                    pushed_es += 1;
+                }
+            }
+
+            else if(prefix == "f"){
+                int f1, f2, f3;
+
+                if(ss >> f1 >> f2 >> f3){
+                    obj.es.push_back({f1-1,f2-1});
+                    obj.es.push_back({f2-1,f3-1});
+                    obj.es.push_back({f3-1,f1-1});
+
+                    pushed_es += 3;
                 }
             }
         }
     }
+    cout << "Pushed " << pushed_vs << " vertices\n";
+    cout << "Pushed " << pushed_es << " edges\n";
 
     return obj;
 }
