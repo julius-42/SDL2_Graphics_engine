@@ -1,0 +1,24 @@
+# Tiny Pyramid Wireframe
+# 5 Vertices, 8 Edges
+
+# Vertices (x, y, z)
+# The base corners (y = -0.5)
+v -0.5 -0.5 -0.5
+v  0.5 -0.5 -0.5
+v  0.5 -0.5  0.5
+v -0.5 -0.5  0.5
+# The apex/top point (y = 0.5)
+v  0.0  0.5  0.0
+
+# Edges (Lines connecting vertex indices)
+# Base lines (Square)
+l 1 2
+l 2 3
+l 3 4
+l 4 1
+
+# Side lines (Connecting base to apex)
+l 1 5
+l 2 5
+l 3 5
+l 4 5

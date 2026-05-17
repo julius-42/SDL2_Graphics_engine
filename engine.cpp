@@ -7,6 +7,11 @@ Compiled: g++ -std=c++20 engine.cpp -o engine -lSDL2
 
 #include <SDL2/SDL.h>
 #include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
+#include <utility>
 
 using namespace std;
 
@@ -28,6 +33,11 @@ struct Position{
 
 struct Rotation{
     float X,Y;
+};
+
+struct Obj{
+    vector<Position> vs;
+    vector<pair<int, int>> es;
 };
 
 void draw_sphere(SDL_Renderer* rndr, int x, int y, int r, Color clr){
@@ -107,13 +117,9 @@ void project_cube(SDL_Renderer* rndr, Position pos, Rotation rot,float size, Col
         {0,4},{1,5},{2,6},{3,7},  // connecting edges
     };
 
-    // apply XZ rotation to all vertices
+    // apply XZ,YZ rotation to all vertices
     for(auto& v : vs){
         v = rotateXZ(v, pos, rot.Y);
-    }
-
-    // apply XZ rotation to all vertices
-    for(auto& v : vs){
         v = rotateYZ(v, pos, rot.X);
     }
 
@@ -127,14 +133,76 @@ void project_cube(SDL_Renderer* rndr, Position pos, Rotation rot,float size, Col
     }
 }
 
-int main(){
+void project_obj(SDL_Renderer* rndr, Obj obj, Position pos, Rotation rot, Color clr){
+
+    vector<Position> transformed_vs = obj.vs;
+
+    // apply XZ,YZ rotation to all vertices
+    for(auto& v : transformed_vs){
+        v = {v.X+pos.X, v.Y+pos.Y, v.Z+pos.Z};
+        v = rotateXZ(v, pos, rot.Y);
+        v = rotateYZ(v, pos, rot.X);
+    }
+
+    for(auto& edge : obj.es){
+        Position& a = transformed_vs[edge.first];
+        Position& b = transformed_vs[edge.second];
+
+        Point p1 = project_point(rndr, a, clr);
+        Point p2 = project_point(rndr, b, clr);
+
+        SDL_RenderDrawLine(rndr, p1.X, p1.Y, p2.X, p2.Y);
+    }
+}
+
+Obj parse_obj_file(char* file_name){
+    Obj obj;
+
+    ifstream file(file_name);
+    string line;
+    
+    while (getline(file, line)){
+        stringstream ss(line);
+        string prefix;
+
+        if(ss >> prefix){
+
+            if(prefix == "v"){  
+                Position vertex;
+
+                if(ss >> vertex.X >> vertex.Y >> vertex.Z){
+                    obj.vs.push_back(vertex);
+                    cout << "Pushed vertex: " << vertex.X << " " << vertex.Y << " " << vertex.Z << "\n";
+                }
+            }
+
+            else if(prefix == "l"){
+                pair<int, int> edge;
+
+                if(ss >> edge.first >> edge.second){
+                    edge.first -= 1;
+                    edge.second -= 1;
+                    obj.es.push_back(edge);
+                    cout << "Pushed edge: " << edge.first << " " << edge.second << "\n";
+                }
+            }
+        }
+    }
+
+    return obj;
+}
+
+
+int main(int argc, char** argv){
 
     Color black = {0,0,0};
     Color green = {0,255,0};
     bool running = true;
     SDL_Event e;
-    Position cube_pos = {0,0,15};
-    Rotation cube_rot = {0,0};
+    Position obj_pos = {0,0,5};
+    Rotation obj_rot = {0,0};
+
+    Obj pyramid = parse_obj_file(argv[1]);
 
     SDL_Window* win = nullptr;
     SDL_Renderer* renderer = nullptr;
@@ -151,16 +219,16 @@ int main(){
             // Controls for movement and rotation of the object
             if(e.type == SDL_KEYDOWN){
                 switch (e.key.keysym.sym){
-                    case SDLK_s: cube_pos.Y += 0.3f; break;
-                    case SDLK_w: cube_pos.Y -= 0.3f; break;
-                    case SDLK_d: cube_pos.X += 0.3f; break;
-                    case SDLK_a: cube_pos.X -= 0.3f; break;
-                    case SDLK_e: cube_pos.Z += 0.3f; break;
-                    case SDLK_q: cube_pos.Z -= 0.3f; break;
-                    case SDLK_DOWN: cube_rot.X += 0.1f; break;
-                    case SDLK_UP: cube_rot.X -= 0.1f; break;
-                    case SDLK_RIGHT: cube_rot.Y += 0.1f; break;
-                    case SDLK_LEFT: cube_rot.Y -= 0.1f; break;
+                    case SDLK_s: obj_pos.Y += 0.3f; break;
+                    case SDLK_w: obj_pos.Y -= 0.3f; break;
+                    case SDLK_d: obj_pos.X += 0.3f; break;
+                    case SDLK_a: obj_pos.X -= 0.3f; break;
+                    case SDLK_e: obj_pos.Z += 0.3f; break;
+                    case SDLK_q: obj_pos.Z -= 0.3f; break;
+                    case SDLK_DOWN: obj_rot.X += 0.1f; break;
+                    case SDLK_UP: obj_rot.X -= 0.1f; break;
+                    case SDLK_RIGHT: obj_rot.Y += 0.1f; break;
+                    case SDLK_LEFT: obj_rot.Y -= 0.1f; break;
                 }
             }
         }
@@ -173,7 +241,8 @@ int main(){
         SDL_SetRenderDrawColor(renderer, green.R, green.G, green.B, 255);
         SDL_RenderDrawPoint(renderer, WIDTH/2, HEIGHT/2);
 
-        project_cube(renderer, cube_pos, cube_rot, 8, green);
+        //project_cube(renderer, obj_pos, obj_rot, 8, green);
+        project_obj(renderer, pyramid, obj_pos, obj_rot, green);
         
 
         SDL_RenderPresent(renderer);
