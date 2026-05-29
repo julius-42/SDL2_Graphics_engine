@@ -12,6 +12,7 @@ Compiled: g++ -std=c++20 engine.cpp -o engine -lSDL2
 #include <string>
 #include <vector>
 #include <utility>
+#include <unordered_set>
 
 using namespace std;
 
@@ -51,109 +52,82 @@ void draw_sphere(SDL_Renderer* rndr, int x, int y, int r, Color clr){
     }
 }
 
+
 // initial cords are 0..x 0..y -> projection uses -x/2..x/2  -y/2..y/2
 // -x/2..x/2 +x/2 0..x
-Point project_point(SDL_Renderer* rndr, Position pos, Color clr){
-
+Point position_to_point(Position pos){
     const float fov = 200.0f;
 
     float pX = fov*(pos.X/pos.Z)+WIDTH/2;
     float pY = fov*(pos.Y/pos.Z)+HEIGHT/2;
-
-    draw_sphere(rndr, (int)(pX), (int)(pY), 3, clr);
-
+    
     return {(int)pX,(int)pY};
 }
 
-Position rotateXZ(Position pos, Position center, float angle){
-    // move to origin
-    float x = pos.X - center.X;
-    float z = pos.Z - center.Z;
-
-    float c = cos(angle);
-    float s = sin(angle);
-
-    // rotate, then move back
-    return {
-        (x*c - z*s) + center.X,
-        pos.Y,
-        (x*s + z*c) + center.Z
-    };
-}  
-
-Position rotateYZ(Position pos, Position center, float angle){
-    // move to origin
-    float y = pos.Y - center.Y;
-    float z = pos.Z - center.Z;
-
-    float c = cos(angle);
-    float s = sin(angle);
-
-    // rotate, then move back
-    return {
-        pos.X,
-        (y*c - z*s) + center.Y,
-        (y*s + z*c) + center.Z
-    };
-}  
-
-
-void project_cube(SDL_Renderer* rndr, Position pos, Rotation rot,float size, Color clr){
-    float r = size/2;
-
-    // 8 corners
-    Position vs[8] = {
-        {pos.X-r, pos.Y-r, pos.Z-r}, {pos.X+r, pos.Y-r, pos.Z-r},
-        {pos.X+r, pos.Y+r, pos.Z-r}, {pos.X-r, pos.Y+r, pos.Z-r},  // front face
-
-        {pos.X-r, pos.Y-r, pos.Z+r}, {pos.X+r, pos.Y-r, pos.Z+r},
-        {pos.X+r, pos.Y+r, pos.Z+r}, {pos.X-r, pos.Y+r, pos.Z+r}, // back face
-    };
-
-    // 12 edges: front, back, connecting sides
-    int es[12][2] = {
-        {0,1},{1,2},{2,3},{3,0},  // front face
-        {4,5},{5,6},{6,7},{7,4},  // back face
-        {0,4},{1,5},{2,6},{3,7},  // connecting edges
-    };
-
-    // apply XZ,YZ rotation to all vertices
-    for(auto& v : vs){
-        v = rotateXZ(v, pos, rot.Y);
-        v = rotateYZ(v, pos, rot.X);
-    }
-
-
-    for(auto& edge : es){
-        Position& a = vs[edge[0]];
-        Position& b = vs[edge[1]];
-        Point p1 = project_point(rndr, a, clr);
-        Point p2 = project_point(rndr, b, clr);
-        SDL_RenderDrawLine(rndr, p1.X, p1.Y, p2.X, p2.Y);
-    }
+void project_point(SDL_Renderer* rndr, Point p, Color clr){
+    draw_sphere(rndr, (p.X), (p.Y), 3, clr);
 }
 
-void project_obj(SDL_Renderer* rndr, Obj obj, Position pos, Rotation rot, Color clr){
+Position rotateXZYZ(Position pos, float sin_X, float cos_X, float sin_Y, float cos_Y){
 
-    vector<Position> transformed_vs = obj.vs;
+    float x1 = pos.X*cos_Y - pos.Z*sin_Y;
+    float z1 = pos.X*sin_Y + pos.Z*cos_Y;
 
-    // apply XZ,YZ rotation to all vertices
-    for(auto& v : transformed_vs){
+    float y1 = pos.Y*cos_X - z1*sin_X;
+    float z2 = pos.Y*sin_X + z1*cos_X;
+
+    return {x1, y1, z2};
+}  
+
+int is_in_bounds(Point p){
+    if(p.X < 0 || p.X > WIDTH || p.Y < 0 || p.Y > HEIGHT){
+        return 0;
+    }
+    return 1;
+}
+
+int project_obj(SDL_Renderer* rndr, const Obj& obj, Position pos, Rotation rot, Color clr){
+
+    size_t vertices_num = obj.vs.size();
+    vector<Position> transformed_vs(vertices_num);
+    vector<Point> ps(vertices_num);
+    vector<bool> is_p_valid(vertices_num, false);
+    int projected = 0;
+
+    for(size_t i = 0; i < vertices_num; i++){
+
+        Position v = obj.vs[i];
+
+        // transform the original vertex (rotation, position)
+        v = rotateXZYZ(v, sin(rot.X), cos(rot.X), sin(rot.Y), cos(rot.Y));
         v = {v.X+pos.X, v.Y+pos.Y, v.Z+pos.Z};
-        v = rotateXZ(v, pos, rot.Y);
-        v = rotateYZ(v, pos, rot.X);
+        transformed_vs[i] = v;
+        
+        // convert position to point only if it's on the visible side of the screen
+        if(v.Z > 0){
+            Point p = position_to_point(v);
+            ps[i] = p;
+
+            // project a point only if it's in screen bounds
+            if(is_in_bounds(p)){
+                project_point(rndr, p, clr);
+                projected += 1;
+            }
+        }
     }
 
-    for(auto& edge : obj.es){
-        Position& a = transformed_vs[edge.first];
-        Position& b = transformed_vs[edge.second];
-
-        Point p1 = project_point(rndr, a, clr);
-        Point p2 = project_point(rndr, b, clr);
-
-        SDL_RenderDrawLine(rndr, p1.X, p1.Y, p2.X, p2.Y);
+    SDL_SetRenderDrawColor(rndr, clr.R, clr.G, clr.B, 255);
+    for(const auto& edge : obj.es){
+        // draw line only if both vertices are on the visible side of the screen
+        if(transformed_vs[edge.first].Z > 0 && transformed_vs[edge.second].Z > 0){
+            SDL_RenderDrawLine(rndr, ps[edge.first].X, ps[edge.first].Y, 
+                                     ps[edge.second].X, ps[edge.second].Y);
+        }
     }
+
+    return projected;
 }
+
 
 Obj parse_obj_file(char* file_name){
     Obj obj;
@@ -214,9 +188,11 @@ int main(int argc, char** argv){
     Color black = {0,0,0};
     Color green = {0,255,0};
     bool running = true;
+    bool print_status = false;
     SDL_Event e;
     Position obj_pos = {0,0,5};
     Rotation obj_rot = {0,0};
+    int projected_points = 0;
 
     Obj pyramid = parse_obj_file(argv[1]);
 
@@ -234,6 +210,7 @@ int main(int argc, char** argv){
                 running = false;
             // Controls for movement and rotation of the object
             if(e.type == SDL_KEYDOWN){
+                print_status = true;
                 switch (e.key.keysym.sym){
                     case SDLK_s: obj_pos.Y += 0.3f; break;
                     case SDLK_w: obj_pos.Y -= 0.3f; break;
@@ -248,19 +225,23 @@ int main(int argc, char** argv){
                 }
             }
         }
-
+        
         // fills window with color
         SDL_SetRenderDrawColor(renderer, black.R, black.G, black.B, 255);
         SDL_RenderClear(renderer);
-
+        
         // center point for reference
         SDL_SetRenderDrawColor(renderer, green.R, green.G, green.B, 255);
         SDL_RenderDrawPoint(renderer, WIDTH/2, HEIGHT/2);
-
-        //project_cube(renderer, obj_pos, obj_rot, 8, green);
-        project_obj(renderer, pyramid, obj_pos, obj_rot, green);
         
-
+        //project_cube(renderer, obj_pos, obj_rot, 8, green);
+        projected_points = project_obj(renderer, pyramid, obj_pos, obj_rot, green);
+        
+        if(print_status){
+            cout << "Projected: " << projected_points << " points\n";
+            print_status = false;
+        }
+        
         SDL_RenderPresent(renderer);
 
         SDL_Delay(10);
