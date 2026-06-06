@@ -2,10 +2,11 @@
 Graphics engine in C++
 Author: Julius Kundrat
 Date: 6.5.2026
-Compiled: g++ -std=c++20 engine.cpp -o engine -lSDL2
+Compiled: g++ -std=c++20 engine.cpp -o engine -lSDL2 -lSDL2_ttf
 */
 
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -19,10 +20,6 @@ using namespace std;
 #define HEIGHT 720
 #define WIDTH 720
 
-
-struct Color{
-    unsigned R, G, B;
-};
 
 struct Point{
     int X,Y;
@@ -41,9 +38,14 @@ struct Obj{
     vector<pair<int, int>> es;
 };
 
-void draw_sphere(SDL_Renderer* rndr, int x, int y, int r, Color clr){
+struct Text{
+    SDL_Texture *texture;
+    SDL_Rect rect;
+};
 
-    SDL_SetRenderDrawColor(rndr, clr.R, clr.G, clr.B, 255);
+void draw_sphere(SDL_Renderer* rndr, int x, int y, int r, SDL_Color clr){
+
+    SDL_SetRenderDrawColor(rndr, clr.r, clr.g, clr.b, 255);
 
     for(int X = -r; X <= r; X++){
         for(int Y = -r; Y <= r; Y++){
@@ -64,7 +66,7 @@ Point position_to_point(Position pos){
     return {(int)pX,(int)pY};
 }
 
-void project_point(SDL_Renderer* rndr, Point p, Color clr){
+void project_point(SDL_Renderer* rndr, Point p, SDL_Color clr){
     draw_sphere(rndr, (p.X), (p.Y), 3, clr);
 }
 
@@ -86,13 +88,15 @@ int is_in_bounds(Point p){
     return 1;
 }
 
-int project_obj(SDL_Renderer* rndr, const Obj& obj, Position pos, Rotation rot, Color clr){
+int project_obj(SDL_Renderer* rndr, const Obj& obj, Position pos, Rotation rot, SDL_Color clr){
 
     size_t vertices_num = obj.vs.size();
     vector<Position> transformed_vs(vertices_num);
     vector<Point> ps(vertices_num);
     vector<bool> is_p_valid(vertices_num, false);
     int projected = 0;
+
+    SDL_SetRenderDrawColor(rndr, clr.r, clr.g, clr.b, 255);
 
     for(size_t i = 0; i < vertices_num; i++){
 
@@ -116,7 +120,6 @@ int project_obj(SDL_Renderer* rndr, const Obj& obj, Position pos, Rotation rot, 
         }
     }
 
-    SDL_SetRenderDrawColor(rndr, clr.R, clr.G, clr.B, 255);
     for(const auto& edge : obj.es){
         // draw line only if both vertices are on the visible side of the screen
         if(transformed_vs[edge.first].Z > 0 && transformed_vs[edge.second].Z > 0){
@@ -182,11 +185,20 @@ Obj parse_obj_file(char* file_name){
     return obj;
 }
 
+Text create_text(SDL_Renderer *rndr, TTF_Font *font, string str, SDL_Color clr, int w = 50, int h = 70){
+    SDL_Surface *surface = TTF_RenderText_Solid(font, str.c_str(), clr);
+    SDL_Texture *text = SDL_CreateTextureFromSurface(rndr, surface);
+    SDL_FreeSurface(surface);
+    SDL_Rect dst = {0,0, (int)(w*str.size()), h};
+
+    return Text{text, dst};
+}
+
 
 int main(int argc, char** argv){
 
-    Color black = {0,0,0};
-    Color green = {0,255,0};
+    SDL_Color black = {0,0,0};
+    SDL_Color green = {0,255,0};
     bool running = true;
     bool print_status = false;
     SDL_Event e;
@@ -200,7 +212,14 @@ int main(int argc, char** argv){
     SDL_Renderer* renderer = nullptr;
 
     SDL_Init(SDL_INIT_VIDEO);
+    if (TTF_Init() < 0){
+        cout << "Error initializing  SDL_ttf: " << TTF_GetError();
+    }
+    
     SDL_CreateWindowAndRenderer(WIDTH, HEIGHT, 0, &win, &renderer);
+
+    TTF_Font *font = TTF_OpenFont("DroidSansMono.ttf", 30);
+    Text mode_text = create_text(renderer, font, "wireframe", green);
 
     while(running){
 
@@ -227,14 +246,18 @@ int main(int argc, char** argv){
         }
         
         // fills window with color
-        SDL_SetRenderDrawColor(renderer, black.R, black.G, black.B, 255);
+        SDL_SetRenderDrawColor(renderer, black.r, black.g, black.b, 255);
         SDL_RenderClear(renderer);
         
         // center point for reference
-        SDL_SetRenderDrawColor(renderer, green.R, green.G, green.B, 255);
+        SDL_SetRenderDrawColor(renderer, green.r, green.b, green.b, 255);
         SDL_RenderDrawPoint(renderer, WIDTH/2, HEIGHT/2);
+
+        //rendering mode text
+        mode_text.rect.x = WIDTH/2 - (mode_text.rect.w/2);
+        mode_text.rect.y = HEIGHT*0.9;
+        SDL_RenderCopy(renderer, mode_text.texture, NULL, &mode_text.rect);
         
-        //project_cube(renderer, obj_pos, obj_rot, 8, green);
         projected_points = project_obj(renderer, pyramid, obj_pos, obj_rot, green);
         
         if(print_status){
@@ -248,8 +271,10 @@ int main(int argc, char** argv){
 
     }
 
+    SDL_DestroyTexture(mode_text.texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(win);
+    TTF_Quit();
     SDL_Quit();
     
     return 0;
