@@ -88,7 +88,7 @@ int is_in_bounds(Point p){
     return 1;
 }
 
-int project_obj(SDL_Renderer* rndr, const Obj& obj, Position pos, Rotation rot, SDL_Color clr){
+int project_obj(SDL_Renderer* rndr, const Obj& obj, Position pos, Rotation rot, SDL_Color clr, int mode){
 
     size_t vertices_num = obj.vs.size();
     vector<Position> transformed_vs(vertices_num);
@@ -113,7 +113,7 @@ int project_obj(SDL_Renderer* rndr, const Obj& obj, Position pos, Rotation rot, 
             ps[i] = p;
 
             // project a point only if it's in screen bounds
-            if(is_in_bounds(p)){
+            if(mode == 0 && is_in_bounds(p)){
                 project_point(rndr, p, clr);
                 projected += 1;
             }
@@ -122,7 +122,7 @@ int project_obj(SDL_Renderer* rndr, const Obj& obj, Position pos, Rotation rot, 
 
     for(const auto& edge : obj.es){
         // draw line only if both vertices are on the visible side of the screen
-        if(transformed_vs[edge.first].Z > 0 && transformed_vs[edge.second].Z > 0){
+        if(mode == 1 && transformed_vs[edge.first].Z > 0 && transformed_vs[edge.second].Z > 0){
             SDL_RenderDrawLine(rndr, ps[edge.first].X, ps[edge.first].Y, 
                                      ps[edge.second].X, ps[edge.second].Y);
         }
@@ -185,7 +185,7 @@ Obj parse_obj_file(char* file_name){
     return obj;
 }
 
-Text create_text(SDL_Renderer *rndr, TTF_Font *font, string str, SDL_Color clr, int w = 50, int h = 70){
+Text create_text(SDL_Renderer *rndr, TTF_Font *font, string str, SDL_Color clr, int w = 40, int h = 60){
     SDL_Surface *surface = TTF_RenderText_Solid(font, str.c_str(), clr);
     SDL_Texture *text = SDL_CreateTextureFromSurface(rndr, surface);
     SDL_FreeSurface(surface);
@@ -219,7 +219,11 @@ int main(int argc, char** argv){
     SDL_CreateWindowAndRenderer(WIDTH, HEIGHT, 0, &win, &renderer);
 
     TTF_Font *font = TTF_OpenFont("DroidSansMono.ttf", 30);
-    Text mode_text = create_text(renderer, font, "wireframe", green);
+    Text wireframe_mode_text = create_text(renderer, font, "wireframe", green);
+    Text vertices_mode_text = create_text(renderer, font, "vertices", green);
+    Text texture_mode_text = create_text(renderer, font, "texture", green);
+    Text modes[3] = {vertices_mode_text, wireframe_mode_text, texture_mode_text};
+    int mode_selected = 0;
 
     while(running){
 
@@ -241,6 +245,9 @@ int main(int argc, char** argv){
                     case SDLK_UP: obj_rot.X -= 0.1f; break;
                     case SDLK_RIGHT: obj_rot.Y += 0.1f; break;
                     case SDLK_LEFT: obj_rot.Y -= 0.1f; break;
+                    case SDLK_1: mode_selected = 0; break;
+                    case SDLK_2: mode_selected = 1; break;
+                    case SDLK_3: mode_selected = 2; break;
                 }
             }
         }
@@ -254,11 +261,11 @@ int main(int argc, char** argv){
         SDL_RenderDrawPoint(renderer, WIDTH/2, HEIGHT/2);
 
         //rendering mode text
-        mode_text.rect.x = WIDTH/2 - (mode_text.rect.w/2);
-        mode_text.rect.y = HEIGHT*0.9;
-        SDL_RenderCopy(renderer, mode_text.texture, NULL, &mode_text.rect);
+        modes[mode_selected].rect.x = WIDTH/2 - (modes[mode_selected].rect.w/2);
+        modes[mode_selected].rect.y = HEIGHT*0.9;
+        SDL_RenderCopy(renderer, modes[mode_selected].texture, NULL, &modes[mode_selected].rect);
         
-        projected_points = project_obj(renderer, pyramid, obj_pos, obj_rot, green);
+        projected_points = project_obj(renderer, pyramid, obj_pos, obj_rot, green, mode_selected);
         
         if(print_status){
             cout << "Projected: " << projected_points << " points\n";
@@ -271,7 +278,9 @@ int main(int argc, char** argv){
 
     }
 
-    SDL_DestroyTexture(mode_text.texture);
+    for(const auto& mode : modes){
+        SDL_DestroyTexture(mode.texture);
+    }
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(win);
     TTF_Quit();
